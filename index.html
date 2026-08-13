@@ -301,11 +301,16 @@
             <h3 class="font-bold text-slate-800 dark:text-white text-base flex items-center gap-2">
               <i data-lucide="pie-chart" class="w-4 h-4 text-dash-yellow"></i> Delivery Drop Point (<span id="pieMonthLabel">最新</span>)
             </h3>
-            <p class="text-xs text-slate-500 dark:text-dash-muted mt-0.5">Drop points breakdown by Business Unit (%)</p>
+            <p class="text-xs text-slate-500 dark:text-dash-muted mt-0.5">Daily Drop points breakdown by Business Unit (%)</p>
           </div>
           <span class="loopBadge text-xs font-mono text-dash-green animate-pulse">[ 2s AUTO LOOP ]</span>
         </div>
         <div class="relative h-64 w-full my-auto flex items-center justify-center"><canvas id="fleetCategoryChart"></canvas></div>
+        
+        <!-- 新增: Drop points 月度變化對比標籤 -->
+        <div id="dropPointsDiff" class="text-xs flex items-center justify-between w-full font-semibold hidden">
+          <!-- JS 會自動插入數據 -->
+        </div>
       </div>
 
       <!-- 4. Delivery Distribution -->
@@ -564,8 +569,6 @@
           <span class="text-slate-400 dark:text-dash-muted font-normal">All categories</span>
         `;
       }
-
-      lucide.createIcons();
     }
 
     function calculateKPI() {
@@ -770,7 +773,9 @@
 
       // 3. Doughnut Chart: Delivery Drop Point (W ~ AA Columns)
       const latest = validKpiList[validKpiList.length - 1];
-      const dropItem = [...fleetData].reverse().find(d => d.dropPoints && (d.dropPoints.pharma > 0 || d.dropPoints.baxter > 0)) || latest;
+      const dropValidList = [...fleetData].filter(d => d.dropPoints && (d.dropPoints.pharma > 0 || d.dropPoints.baxter > 0));
+      const dropItem = dropValidList[dropValidList.length - 1] || latest;
+      const prevDropItem = dropValidList.length > 1 ? dropValidList[dropValidList.length - 2] : null;
 
       document.getElementById('pieMonthLabel').innerText = dropItem ? dropItem.month : '最新';
 
@@ -841,6 +846,39 @@
           }
         }
       });
+      
+      // 更新 Drop points 的變化比較
+      const diffEl = document.getElementById('dropPointsDiff');
+      if (prevDropItem && prevDropItem.dropPoints && dropTotalVal > 0) {
+        const prevValues = [
+          prevDropItem.dropPoints.pharma,
+          prevDropItem.dropPoints.baxter,
+          prevDropItem.dropPoints.cv,
+          prevDropItem.dropPoints.jjm,
+          prevDropItem.dropPoints.boston
+        ];
+        const prevTotal = prevValues.reduce((a, b) => a + b, 0);
+        
+        if (prevTotal > 0) {
+          const diffPercent = (((dropTotalVal - prevTotal) / prevTotal) * 100).toFixed(1);
+          const diffIcon = diffPercent >= 0 ? 'trending-up' : 'trending-down';
+          const diffClass = diffPercent >= 0 ? 'text-dash-green' : 'text-dash-yellow';
+          
+          diffEl.classList.remove('hidden');
+          diffEl.className = `text-xs ${diffClass} flex items-center justify-between w-full font-semibold pt-1`;
+          diffEl.innerHTML = `
+            <div class="flex items-center gap-1">
+              <i data-lucide="${diffIcon}" class="w-3.5 h-3.5"></i>
+              <span>${diffPercent >= 0 ? '+' : ''}${diffPercent}% vs ${prevDropItem.month}</span>
+            </div>
+            <span class="text-slate-400 dark:text-dash-muted font-normal">All BUs</span>
+          `;
+        } else {
+          diffEl.classList.add('hidden');
+        }
+      } else {
+        diffEl.classList.add('hidden');
+      }
 
       // 4. Delivery Distribution 百分比圓形圖
       const distItem = [...fleetData].reverse().find(d => d.distData && d.distData.distTotal > 0) || latest;
@@ -919,6 +957,9 @@
           }
         }
       });
+
+      // 重新渲染全部 Icon 確保 DOM 插入的 Lucide Icon 生效
+      lucide.createIcons();
 
       if (isAutoLoopRunning) {
         startChartAutoLoop(trendChartInstance, (t) => trendAutoTimer = t);
