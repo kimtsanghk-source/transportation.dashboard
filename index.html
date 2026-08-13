@@ -301,7 +301,7 @@
             <h3 class="font-bold text-slate-800 dark:text-white text-base flex items-center gap-2">
               <i data-lucide="pie-chart" class="w-4 h-4 text-dash-yellow"></i> Delivery Drop Point (<span id="pieMonthLabel">最新</span>)
             </h3>
-            <p class="text-xs text-slate-500 dark:text-dash-muted mt-0.5">Average Daily Drop Points by Month</p>
+            <p class="text-xs text-slate-500 dark:text-dash-muted mt-0.5">Drop points breakdown by Business Unit (%)</p>
           </div>
           <span class="loopBadge text-xs font-mono text-dash-green animate-pulse">[ 2s AUTO LOOP ]</span>
         </div>
@@ -479,6 +479,13 @@
           const selfPick = getRowVal(row, 'Self Pick') || 0;
           const distTotal = grandTotalVal || (clinic + elderly + homeDel + hospital + ka + macau + selfPick);
 
+          // 新增讀取 W ~ AA 欄的 Drop point 數據
+          const dropPharma = getRowVal(row, 'Drop point(Pharma)') || 0;
+          const dropBaxter = getRowVal(row, 'Drop point(Baxter)') || 0;
+          const dropCV     = getRowVal(row, 'Drop point(CV)') || 0;
+          const dropJJM    = getRowVal(row, 'Drop point(JJM)') || 0;
+          const dropBoston = getRowVal(row, 'Drop point(Boston)') || 0;
+
           parsedList.push({
             month: monthObj.label,
             year: monthObj.year,
@@ -500,6 +507,9 @@
             otif: parseOtifValue(otifKey ? row[otifKey] : 0),
             distData: {
               clinic, elderly, homeDel, hospital, ka, macau, selfPick, distTotal
+            },
+            dropPoints: {
+              pharma: dropPharma, baxter: dropBaxter, cv: dropCV, jjm: dropJJM, boston: dropBoston
             }
           });
         });
@@ -537,8 +547,7 @@
       document.getElementById('kpiEfficiency').innerText = latest.effOrders;
       document.getElementById('kpiOtif').innerText = latest.otif.toFixed(2);
       document.getElementById('kpiUtilization').innerText = latest.cbm;
-      document.getElementById('pieMonthLabel').innerText = `${latest.month}`;
-
+      
       // 對比前一月份 (May_26)
       if (prev && prev.grandTotal > 0) {
         const prevVal = prev.grandTotal;
@@ -759,26 +768,76 @@
         }
       });
 
-      // 3. Doughnut Chart: Product Distribution
+      // 3. Doughnut Chart: Delivery Drop Point (W ~ AA Columns)
       const latest = validKpiList[validKpiList.length - 1];
+      const dropItem = [...fleetData].reverse().find(d => d.dropPoints && (d.dropPoints.pharma > 0 || d.dropPoints.baxter > 0)) || latest;
+
+      document.getElementById('pieMonthLabel').innerText = dropItem ? dropItem.month : '最新';
+
+      const dropLabels = ['Pharma', 'Baxter', 'CV', 'JJM', 'Boston'];
+      const dropValues = dropItem && dropItem.dropPoints ? [
+        dropItem.dropPoints.pharma,
+        dropItem.dropPoints.baxter,
+        dropItem.dropPoints.cv,
+        dropItem.dropPoints.jjm,
+        dropItem.dropPoints.boston
+      ] : [0, 0, 0, 0, 0];
+      const dropTotalVal = dropValues.reduce((a, b) => a + b, 0);
+
       const ctxCat = document.getElementById('fleetCategoryChart').getContext('2d');
       if (categoryChartInstance) categoryChartInstance.destroy();
       categoryChartInstance = new Chart(ctxCat, {
         type: 'doughnut',
         data: {
-          labels: ['Pharma Orders', 'Baxter Orders'],
+          labels: dropLabels,
           datasets: [{
-            data: [latest ? latest.wMedOrders : 0, latest ? latest.renalOrders : 0],
-            backgroundColor: ['#38a5ff', '#ffb020'],
+            data: dropValues,
+            backgroundColor: [
+              '#38a5ff', // Pharma - Blue
+              '#ffb020', // Baxter - Yellow
+              '#2cd997', // CV - Green
+              '#7c5cfc', // JJM - Purple
+              '#ff5252'  // Boston - Red
+            ],
             borderColor: isDark ? '#242430' : '#ffffff',
-            borderWidth: 4
+            borderWidth: 3,
+            hoverOffset: 10
           }]
         },
         options: {
           responsive: true, maintainAspectRatio: false,
+          cutout: '45%',
           plugins: { 
-            legend: { position: 'bottom', labels: { color: chartColors.text } },
-            datalabels: { display: false }
+            legend: { 
+              position: 'right', 
+              labels: { 
+                color: chartColors.text,
+                font: { family: 'Plus Jakarta Sans', size: 10 },
+                boxWidth: 12
+              } 
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const val = context.parsed;
+                  const pct = dropTotalVal > 0 ? ((val / dropTotalVal) * 100).toFixed(1) : 0;
+                  return ` ${context.label}: ${val.toLocaleString()} (${pct}%)`;
+                }
+              }
+            },
+            datalabels: { 
+              display: function(context) {
+                const val = context.dataset.data[context.dataIndex];
+                const pct = dropTotalVal > 0 ? (val / dropTotalVal) * 100 : 0;
+                return pct >= 1; // 顯示大於等於 1% 的數據
+              },
+              color: '#ffffff',
+              font: { family: 'JetBrains Mono', weight: 'bold', size: 9 },
+              formatter: function(value) {
+                const pct = dropTotalVal > 0 ? ((value / dropTotalVal) * 100).toFixed(1) : 0;
+                return `${pct}%`;
+              }
+            }
           }
         }
       });
