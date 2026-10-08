@@ -307,7 +307,7 @@
         </div>
         <div class="relative h-64 w-full my-auto flex items-center justify-center"><canvas id="fleetCategoryChart"></canvas></div>
         
-        <!-- 新增: Drop points 月度變化對比標籤 -->
+        <!-- Drop points 月度變化對比標籤 -->
         <div id="dropPointsDiff" class="text-xs flex items-center justify-between w-full font-semibold hidden">
           <!-- JS 會自動插入數據 -->
         </div>
@@ -326,6 +326,41 @@
         </div>
         <div class="relative h-64 w-full my-auto flex items-center justify-center">
           <canvas id="deliveryDistChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 5. 2026 Monthly Delivery Orders Trend Analysis (新圖表跨越全寬) -->
+      <div class="dash-card p-6 space-y-4 lg:col-span-2">
+        <div class="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-200 dark:border-dash-border pb-4 gap-4">
+          <div>
+            <h3 class="font-bold text-slate-800 dark:text-white text-base flex items-center gap-2">
+              <i data-lucide="trending-up" class="w-4 h-4 text-dash-blue"></i> 2026 Monthly Delivery Orders Trend Analysis
+            </h3>
+          </div>
+          
+          <div class="flex items-center gap-3">
+            <span class="loopBadge text-xs font-mono text-dash-green animate-pulse hidden md:inline-block">[ 2s AUTO LOOP ]</span>
+            <!-- Toggle Mode Buttons -->
+            <div class="flex bg-slate-100 dark:bg-dash-main p-1 rounded-lg text-[11px] font-medium border border-slate-200 dark:border-dash-border">
+              <button onclick="setShippingMode('total')" id="btnTotalTrend" class="px-3 py-1.5 rounded-md bg-white dark:bg-dash-card shadow-sm text-slate-800 dark:text-white transition-all">Total Trend</button>
+              <button onclick="setShippingMode('stacked')" id="btnStackedBar" class="px-3 py-1.5 rounded-md text-slate-500 dark:text-dash-muted hover:text-slate-800 dark:hover:text-white transition-all">Stacked Bar</button>
+              <button onclick="setShippingMode('multi')" id="btnMultiLine" class="px-3 py-1.5 rounded-md text-slate-500 dark:text-dash-muted hover:text-slate-800 dark:hover:text-white transition-all">Multi-line</button>
+            </div>
+          </div>
+        </div>
+        <div class="relative h-80 w-full">
+          <canvas id="shippingTrendChart"></canvas>
+        </div>
+        <!-- 底部註解 -->
+        <div class="pt-2 space-y-1">
+          <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-dash-muted font-medium">
+            <span class="w-2 h-2 rounded-full bg-dash-purple"></span>
+            Note: Hospital shipments maintained a high baseline, peaking in Mar & Jun (>16k)
+          </div>
+          <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-dash-muted font-medium">
+            <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+            Note: Feb dipped to a 52k trough due to the CNY holidays
+          </div>
         </div>
       </div>
 
@@ -381,9 +416,10 @@
     lucide.createIcons();
 
     let fleetData = [];
-    let trendChartInstance = null, otifChartInstance = null, categoryChartInstance = null, deliveryDistChartInstance = null;
-    let trendAutoTimer = null, otifAutoTimer = null, categoryAutoTimer = null, deliveryDistAutoTimer = null;
+    let trendChartInstance = null, otifChartInstance = null, categoryChartInstance = null, deliveryDistChartInstance = null, shippingTrendChartInstance = null;
+    let trendAutoTimer = null, otifAutoTimer = null, categoryAutoTimer = null, deliveryDistAutoTimer = null, shippingAutoTimer = null;
     let isAutoLoopRunning = true;
+    let currentShippingMode = 'total';
 
     function parseOtifValue(val) {
       if (val === undefined || val === null || val === '') return 0;
@@ -484,7 +520,6 @@
           const selfPick = getRowVal(row, 'Self Pick') || 0;
           const distTotal = grandTotalVal || (clinic + elderly + homeDel + hospital + ka + macau + selfPick);
 
-          // 新增讀取 W ~ AA 欄的 Drop point 數據
           const dropPharma = getRowVal(row, 'Drop point(Pharma)') || 0;
           const dropBaxter = getRowVal(row, 'Drop point(Baxter)') || 0;
           const dropCV     = getRowVal(row, 'Drop point(CV)') || 0;
@@ -537,23 +572,20 @@
     }
 
     function updateHeaderAndCards() {
-      // 篩選出 Grand Total 具備有效數值的已完結月份
       const validKpiList = fleetData.filter(d => d.isValidKpiRow && (d.grandTotal > 0));
       if (!validKpiList || validKpiList.length === 0) return;
 
-      const latest = validKpiList[validKpiList.length - 1]; // 最新有效月份 (Jun_26: 57,479)
-      const prev = validKpiList.length > 1 ? validKpiList[validKpiList.length - 2] : null; // 前一月份 (May_26: 53,663)
+      const latest = validKpiList[validKpiList.length - 1]; 
+      const prev = validKpiList.length > 1 ? validKpiList[validKpiList.length - 2] : null; 
 
       document.getElementById('lastUpdateTag').innerText = `LAST_UPDATE: ${latest.month}`;
 
-      // 正確讀取 Column U (Grand Total)
       const displayTotalOrders = latest.grandTotal;
       document.getElementById('kpiTotalOrders').innerText = displayTotalOrders.toLocaleString();
       document.getElementById('kpiEfficiency').innerText = latest.effOrders;
       document.getElementById('kpiOtif').innerText = latest.otif.toFixed(2);
       document.getElementById('kpiUtilization').innerText = latest.cbm;
       
-      // 對比前一月份 (May_26)
       if (prev && prev.grandTotal > 0) {
         const prevVal = prev.grandTotal;
         const diffPercent = (((displayTotalOrders - prevVal) / prevVal) * 100).toFixed(1);
@@ -591,7 +623,6 @@
 
     function startChartAutoLoop(chart, timerVarSetter) {
       if (!isAutoLoopRunning) return;
-
       let currentIndex = 0;
       const interval = setInterval(() => {
         if (!chart || !chart.data || !chart.data.labels || chart.data.labels.length === 0) return;
@@ -619,7 +650,7 @@
         
         badges.forEach(b => {
           b.innerText = '[ 2s AUTO LOOP ]';
-          b.className = 'loopBadge text-xs font-mono text-dash-green animate-pulse';
+          b.className = 'loopBadge text-xs font-mono text-dash-green animate-pulse' + (b.classList.contains('hidden') ? ' hidden md:inline-block' : '');
         });
 
         initFleetCharts();
@@ -630,15 +661,16 @@
 
         badges.forEach(b => {
           b.innerText = '[ LOOP PAUSED ]';
-          b.className = 'loopBadge text-xs font-mono text-dash-yellow';
+          b.className = 'loopBadge text-xs font-mono text-dash-yellow' + (b.classList.contains('hidden') ? ' hidden md:inline-block' : '');
         });
 
         if (trendAutoTimer) clearInterval(trendAutoTimer);
         if (otifAutoTimer) clearInterval(otifAutoTimer);
         if (categoryAutoTimer) clearInterval(categoryAutoTimer);
         if (deliveryDistAutoTimer) clearInterval(deliveryDistAutoTimer);
+        if (shippingAutoTimer) clearInterval(shippingAutoTimer);
 
-        [trendChartInstance, otifChartInstance, categoryChartInstance, deliveryDistChartInstance].forEach(chart => {
+        [trendChartInstance, otifChartInstance, categoryChartInstance, deliveryDistChartInstance, shippingTrendChartInstance].forEach(chart => {
           if (chart) {
             chart.setActiveElements([]);
             chart.tooltip.setActiveElements([], { x: 0, y: 0 });
@@ -650,6 +682,139 @@
       lucide.createIcons();
     }
 
+    window.setShippingMode = function(mode) {
+      currentShippingMode = mode;
+      
+      const activeClass = "px-3 py-1.5 rounded-md bg-white dark:bg-dash-card shadow-sm text-slate-800 dark:text-white transition-all".split(" ");
+      const inactiveClass = "px-3 py-1.5 rounded-md text-slate-500 dark:text-dash-muted hover:text-slate-800 dark:hover:text-white transition-all".split(" ");
+
+      const btnTotal = document.getElementById('btnTotalTrend');
+      const btnStacked = document.getElementById('btnStackedBar');
+      const btnMulti = document.getElementById('btnMultiLine');
+
+      [btnTotal, btnStacked, btnMulti].forEach(btn => btn.className = "");
+
+      if (mode === 'total') {
+        btnTotal.classList.add(...activeClass);
+        btnStacked.classList.add(...inactiveClass);
+        btnMulti.classList.add(...inactiveClass);
+      } else if (mode === 'stacked') {
+        btnTotal.classList.add(...inactiveClass);
+        btnStacked.classList.add(...activeClass);
+        btnMulti.classList.add(...inactiveClass);
+      } else {
+        btnTotal.classList.add(...inactiveClass);
+        btnStacked.classList.add(...inactiveClass);
+        btnMulti.classList.add(...activeClass);
+      }
+
+      renderShippingChart();
+      
+      if (shippingAutoTimer) clearInterval(shippingAutoTimer);
+      if (isAutoLoopRunning && shippingTrendChartInstance) {
+        startChartAutoLoop(shippingTrendChartInstance, (t) => shippingAutoTimer = t);
+      }
+    }
+
+    function renderShippingChart() {
+      const isDark = document.documentElement.classList.contains('dark');
+      const chartColors = {
+        grid: isDark ? '#333342' : '#e2e8f0',
+        text: isDark ? '#8e8e9e' : '#64748b'
+      };
+
+      const data2026 = fleetData.filter(d => d.year === 2026 && d.isValidKpiRow);
+      const labels = data2026.map(d => d.month);
+      
+      const totalData = data2026.map(d => d.grandTotal);
+      const clinicData = data2026.map(d => d.distData.clinic);
+      const elderlyData = data2026.map(d => d.distData.elderly);
+      const homeDelData = data2026.map(d => d.distData.homeDel);
+      const hospitalData = data2026.map(d => d.distData.hospital);
+      const kaData = data2026.map(d => d.distData.ka);
+      const macauData = data2026.map(d => d.distData.macau);
+      const selfPickData = data2026.map(d => d.distData.selfPick);
+
+      const datasetsConfig = {
+        total: [{
+          label: 'Total Orders',
+          data: totalData,
+          borderColor: '#38a5ff',
+          backgroundColor: 'rgba(56, 165, 255, 0.15)',
+          borderWidth: 3,
+          fill: true,
+          tension: 0.4,
+          pointBackgroundColor: '#ffffff',
+          pointBorderColor: '#38a5ff',
+          pointBorderWidth: 2,
+          pointRadius: 4,
+          type: 'line'
+        }],
+        stacked: [
+          { label: 'Hospital', data: hospitalData, backgroundColor: '#7c5cfc' },
+          { label: 'Clinic', data: clinicData, backgroundColor: '#38a5ff' },
+          { label: 'Home Delivery', data: homeDelData, backgroundColor: '#2cd997' },
+          { label: 'KA', data: kaData, backgroundColor: '#ff5252' },
+          { label: 'Elderly', data: elderlyData, backgroundColor: '#ffb020' },
+          { label: 'Macau', data: macauData, backgroundColor: '#00d2ff' },
+          { label: 'Self Pick', data: selfPickData, backgroundColor: '#ff7675' }
+        ].map(ds => ({...ds, type: 'bar', borderWidth: 0})),
+        multi: [
+          { label: 'Hospital', data: hospitalData, borderColor: '#7c5cfc' },
+          { label: 'Clinic', data: clinicData, borderColor: '#38a5ff' },
+          { label: 'Home Delivery', data: homeDelData, borderColor: '#2cd997' },
+          { label: 'KA', data: kaData, borderColor: '#ff5252' },
+          { label: 'Elderly', data: elderlyData, borderColor: '#ffb020' },
+          { label: 'Macau', data: macauData, borderColor: '#00d2ff' },
+          { label: 'Self Pick', data: selfPickData, borderColor: '#ff7675' }
+        ].map(ds => ({...ds, type: 'line', tension: 0.4, fill: false, borderWidth: 2, pointRadius: 2, pointHoverRadius: 4}))
+      };
+
+      const ctx = document.getElementById('shippingTrendChart').getContext('2d');
+      if (shippingTrendChartInstance) shippingTrendChartInstance.destroy();
+
+      const isStacked = currentShippingMode === 'stacked';
+
+      shippingTrendChartInstance = new Chart(ctx, {
+        data: {
+          labels: labels,
+          datasets: datasetsConfig[currentShippingMode]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: {
+              display: currentShippingMode !== 'total',
+              position: 'top',
+              labels: { color: chartColors.text, usePointStyle: true, boxWidth: 8, font: {family: 'Plus Jakarta Sans'} }
+            },
+            datalabels: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return ` ${context.dataset.label}: ${context.parsed.y.toLocaleString()}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: { 
+              stacked: isStacked,
+              grid: { color: chartColors.grid, drawBorder: false },
+              ticks: { color: chartColors.text, font: {family: 'Plus Jakarta Sans'} }
+            },
+            y: { 
+              stacked: isStacked,
+              grid: { color: chartColors.grid, drawBorder: false },
+              ticks: { color: chartColors.text, font: {family: 'JetBrains Mono'} }
+            }
+          }
+        }
+      });
+    }
+
     function initFleetCharts() {
       updateHeaderAndCards();
 
@@ -657,6 +822,7 @@
       if (otifAutoTimer) clearInterval(otifAutoTimer);
       if (categoryAutoTimer) clearInterval(categoryAutoTimer);
       if (deliveryDistAutoTimer) clearInterval(deliveryDistAutoTimer);
+      if (shippingAutoTimer) clearInterval(shippingAutoTimer);
 
       const isDark = document.documentElement.classList.contains('dark');
       const chartColors = {
@@ -847,7 +1013,6 @@
         }
       });
       
-      // 更新 Drop points 的變化比較
       const diffEl = document.getElementById('dropPointsDiff');
       if (prevDropItem && prevDropItem.dropPoints && dropTotalVal > 0) {
         const prevValues = [
@@ -958,7 +1123,9 @@
         }
       });
 
-      // 重新渲染全部 Icon 確保 DOM 插入的 Lucide Icon 生效
+      // 5. 初始化 2026 Shipping Trend Chart
+      renderShippingChart();
+
       lucide.createIcons();
 
       if (isAutoLoopRunning) {
@@ -966,6 +1133,7 @@
         startChartAutoLoop(otifChartInstance, (t) => otifAutoTimer = t);
         startChartAutoLoop(categoryChartInstance, (t) => categoryAutoTimer = t);
         startChartAutoLoop(deliveryDistChartInstance, (t) => deliveryDistAutoTimer = t);
+        startChartAutoLoop(shippingTrendChartInstance, (t) => shippingAutoTimer = t);
       }
     }
 
