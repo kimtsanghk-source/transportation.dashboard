@@ -752,7 +752,7 @@
         }],
         stacked: [
           { label: 'Hospital', data: hospitalData, backgroundColor: '#7c5cfc' },
-          { label: 'Clinic', data: clinicData, backgroundColor: '#38a5ff' },
+          { label: 'Clinic/Pharmacy/Optical Store', data: clinicData, backgroundColor: '#38a5ff' },
           { label: 'Home Delivery', data: homeDelData, backgroundColor: '#2cd997' },
           { label: 'KA', data: kaData, backgroundColor: '#ff5252' },
           { label: 'Elderly', data: elderlyData, backgroundColor: '#ffb020' },
@@ -761,7 +761,7 @@
         ].map(ds => ({...ds, type: 'bar', borderWidth: 0})),
         multi: [
           { label: 'Hospital', data: hospitalData, borderColor: '#7c5cfc' },
-          { label: 'Clinic', data: clinicData, borderColor: '#38a5ff' },
+          { label: 'Clinic/Pharmacy/Optical Store', data: clinicData, borderColor: '#38a5ff' },
           { label: 'Home Delivery', data: homeDelData, borderColor: '#2cd997' },
           { label: 'KA', data: kaData, borderColor: '#ff5252' },
           { label: 'Elderly', data: elderlyData, borderColor: '#ffb020' },
@@ -1048,7 +1048,7 @@
       // 4. Delivery Distribution 百分比圓形圖
       const distItem = [...fleetData].reverse().find(d => d.distData && d.distData.distTotal > 0) || latest;
       
-      const distLabels = ['Clinic/Dispensary/Optical Store', 'Elderly Home', 'Home Delivery', 'Hospital', 'KA', 'Macau', 'Self Pick Up'];
+      const distLabels = ['Clinic/Pharmacy/Optical Store', 'Elderly Home', 'Home Delivery', 'Hospital', 'KA', 'Macau', 'Self Pick Up'];
       const distValues = distItem && distItem.distData ? [
         distItem.distData.clinic,
         distItem.distData.elderly,
