@@ -283,9 +283,9 @@
           <div class="flex flex-col items-end gap-1">
             <span class="loopBadge text-[10px] font-mono text-dash-green animate-pulse">[ 2s AUTO LOOP ]</span>
             <div class="flex items-center gap-2 text-[10px] font-mono">
-              <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-[#2cd997]"></span>&gt;98%</span>
+              <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-[#2cd997]"></span>>98%</span>
               <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-[#ffb020]"></span>97-98%</span>
-              <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-[#ff5252]"></span>&lt;97%</span>
+              <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-[#ff5252]"></span><97%</span>
             </div>
           </div>
         </div>
@@ -351,15 +351,11 @@
         <div class="relative h-80 w-full">
           <canvas id="shippingTrendChart"></canvas>
         </div>
-        <!-- 底部註解 -->
-        <div class="pt-2 space-y-1">
+        <!-- 動態更新的底部最新月份分析註解 -->
+        <div id="shippingTrendNotes" class="pt-2 space-y-1.5">
           <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-dash-muted font-medium">
-            <span class="w-2 h-2 rounded-full bg-dash-purple"></span>
-            Note: Hospital shipments maintained a high baseline, peaking in Mar & Jun (>16k)
-          </div>
-          <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-dash-muted font-medium">
-            <span class="w-2 h-2 rounded-full bg-slate-400"></span>
-            Note: Feb dipped to a 52k trough due to the CNY holidays
+            <span class="w-2 h-2 rounded-full bg-dash-blue animate-pulse"></span>
+            <span>Loading latest monthly trend analysis...</span>
           </div>
         </div>
       </div>
@@ -716,6 +712,55 @@
       }
     }
 
+    function updateShippingNotes(data2026) {
+      const notesEl = document.getElementById('shippingTrendNotes');
+      if (!notesEl || !data2026 || data2026.length === 0) return;
+
+      const latest = data2026[data2026.length - 1];
+      const prev = data2026.length > 1 ? data2026[data2026.length - 2] : null;
+
+      let momText = '';
+      let dotColor = 'bg-dash-blue';
+      if (prev && prev.grandTotal > 0) {
+        const diffPct = (((latest.grandTotal - prev.grandTotal) / prev.grandTotal) * 100).toFixed(1);
+        const sign = diffPct >= 0 ? '+' : '';
+        const textColor = diffPct >= 0 ? 'text-dash-green' : 'text-dash-yellow';
+        momText = ` (<span class="${textColor} font-semibold">${sign}${diffPct}% vs ${prev.month}</span>)`;
+        dotColor = diffPct >= 0 ? 'bg-dash-green' : 'bg-dash-yellow';
+      }
+
+      const channels = [
+        { name: 'Clinic/Pharmacy/Optical Store', val: latest.distData.clinic },
+        { name: 'Home Delivery', val: latest.distData.homeDel },
+        { name: 'Hospital', val: latest.distData.hospital },
+        { name: 'KA', val: latest.distData.ka },
+        { name: 'Elderly Home', val: latest.distData.elderly },
+        { name: 'Macau', val: latest.distData.macau },
+        { name: 'Self Pick Up', val: latest.distData.selfPick }
+      ].sort((a, b) => b.val - a.val);
+
+      const totalDist = latest.distData.distTotal || latest.grandTotal || 1;
+      const top1 = channels[0];
+      const top2 = channels[1];
+      const top1Pct = ((top1.val / totalDist) * 100).toFixed(1);
+      const top2Pct = ((top2.val / totalDist) * 100).toFixed(1);
+
+      const avgOrders = Math.round(data2026.reduce((sum, d) => sum + d.grandTotal, 0) / data2026.length);
+      const peakItem = data2026.reduce((max, d) => d.grandTotal > max.grandTotal ? d : max, data2026[0]);
+      const troughItem = data2026.reduce((min, d) => d.grandTotal < min.grandTotal ? d : min, data2026[0]);
+
+      notesEl.innerHTML = `
+        <div class="flex items-start sm:items-center gap-2 text-xs text-slate-500 dark:text-dash-muted font-medium">
+          <span class="w-2 h-2 rounded-full ${dotColor} shrink-0 mt-1 sm:mt-0"></span>
+          <span><strong class="text-slate-700 dark:text-white">${latest.month} Analysis:</strong> Total orders reached <strong class="text-slate-700 dark:text-white">${latest.grandTotal.toLocaleString()}</strong>${momText}, led by ${top1.name} (${top1Pct}%) & ${top2.name} (${top2Pct}%).</span>
+        </div>
+        <div class="flex items-start sm:items-center gap-2 text-xs text-slate-500 dark:text-dash-muted font-medium">
+          <span class="w-2 h-2 rounded-full bg-dash-purple shrink-0 mt-1 sm:mt-0"></span>
+          <span><strong class="text-slate-700 dark:text-white">2026 YTD Summary:</strong> Monthly average is <strong class="text-slate-700 dark:text-white">${avgOrders.toLocaleString()}</strong> orders — peaking in ${peakItem.month} (${peakItem.grandTotal.toLocaleString()}) and lowest in ${troughItem.month} (${troughItem.grandTotal.toLocaleString()}).</span>
+        </div>
+      `;
+    }
+
     function renderShippingChart() {
       const isDark = document.documentElement.classList.contains('dark');
       const chartColors = {
@@ -724,6 +769,8 @@
       };
 
       const data2026 = fleetData.filter(d => d.year === 2026 && d.isValidKpiRow);
+      updateShippingNotes(data2026);
+
       const labels = data2026.map(d => d.month);
       
       const totalData = data2026.map(d => d.grandTotal);
@@ -1000,7 +1047,7 @@
               display: function(context) {
                 const val = context.dataset.data[context.dataIndex];
                 const pct = dropTotalVal > 0 ? (val / dropTotalVal) * 100 : 0;
-                return pct >= 1; // 顯示大於等於 1% 的數據
+                return pct >= 1;
               },
               color: '#ffffff',
               font: { family: 'JetBrains Mono', weight: 'bold', size: 9 },
